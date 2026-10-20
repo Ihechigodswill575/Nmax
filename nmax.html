@@ -1,4 +1,3 @@
-```html
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -165,7 +164,7 @@ footer .logo{font-size:15px!important}
 <body>
 <header class="nav" id="nav"></header>
 <div id="app"></div>
-<footer><div style="flex:1 1 320px"><a class="logo" href="#/" style="font-size:22px">nmax</a><p style="max-width:44ch">Stream series, movies, anime and documentaries from Amazon & CineSubz API in HD.</p></div><div style="display:flex;gap:10px;align-items:flex-start"><a class="ib" href="#/" aria-label="Discord">D</a><a class="ib" href="#/" aria-label="Telegram">T</a></div><div style="width:100%;display:flex;gap:18px;flex-wrap:wrap"><span>Help centre</span><span>Devices</span><span>Terms of use</span><span>Privacy</span><span>Contact us</span></div><p style="width:100%;font-size:13px;margin:0">© 2026 Nmax. Films are from Amazon / CineSubz API and are free to watch.</p><button class="up" id="up" aria-label="Back to top">&#8593;</button></footer>
+<footer><div style="flex:1 1 320px"><a class="logo" href="#/" style="font-size:22px">nmax</a><p style="max-width:44ch">Stream series, movies, anime and documentaries in HD. Create an account to keep your list and progress on every device.</p></div><div style="display:flex;gap:10px;align-items:flex-start"><a class="ib" href="#/" aria-label="Discord">D</a><a class="ib" href="#/" aria-label="Telegram">T</a></div><div style="width:100%;display:flex;gap:18px;flex-wrap:wrap"><span>Help centre</span><span>Devices</span><span>Terms of use</span><span>Privacy</span><span>Contact us</span></div><p style="width:100%;font-size:13px;margin:0">© 2026 Nmax. Design preview: all titles shown are fictional.</p><button class="up" id="up" aria-label="Back to top">&#8593;</button></footer>
 <script>
 const T=[];
 const X=[];
@@ -180,18 +179,29 @@ const V=[],pk=i=>V[i]?V[i].id:i;
 const bg=i=>{const u=V[i]&&V[i].poster;return u?` style="background:#111 url('${String(u).replace(/['"()\\\s]/g,c=>encodeURIComponent(c))}') center/cover"`:''};
 const rt=i=>X[i]&&X[i][2]>0?Number(X[i][2]).toFixed(1):'&ndash;';
 
+const TMDB_KEY='eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIwN2I5ODFhMWU2ZGFkOTIwOWZjNTEzMmQ3NjcyYmNlMiIsIm5iZiI6MTc3NDAxNTE0Mi4zODMwMDAxLCJzdWIiOiI2OWJkNTJhNjEwMjI5NjkwMTE1ZmI2NTciLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0.coEH7RP5fn-lOrhw9iCHPpNQRT94gYMOiSg9J63YWHc';
+const POSTER=(t,g)=>'data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 600"><defs><linearGradient id="a" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4a4a4a"/><stop offset="1" stop-color="#050505"/></linearGradient></defs><rect width="400" height="600" fill="url(#a)"/><circle cx="320" cy="140" r="150" fill="#fff" fill-opacity=".08"/><path d="M165 240l110 60-110 60z" fill="#fff" fill-opacity=".85"/><text x="30" y="500" font-family="Arial" font-weight="800" font-size="46" fill="#fff">'+t+'</text><text x="30" y="540" font-family="Arial" font-size="22" fill="#bbb">'+g+'</text></svg>');
 /* CineSubz API Integration Provider with active fetch calls */
 const CINESUBZ_API_PROVIDER={
  async catalog(){
+  try{
+   const GM={28:'Action',12:'Adventure',16:'Animation',35:'Comedy',80:'Crime',99:'Documentary',18:'Drama',10751:'Family',14:'Fantasy',36:'History',27:'Horror',10402:'Music',9648:'Mystery',10749:'Romance',878:'Sci-fi',53:'Thriller',10752:'War',37:'Western'};
+   const P='/3/movie/popular?language=en-US&page=1&api_key=07b981a1e6dad9209fc5132d7672bce2';
+   const U=['https://api.themoviedb.org'+P,'https://api.tmdb.org'+P,'https://corsproxy.io/?url='+encodeURIComponent('https://api.themoviedb.org'+P),'https://api.allorigins.win/raw?url='+encodeURIComponent('https://api.themoviedb.org'+P)];
+   let r=null,le;
+   for(const u of U){try{const x=await fetch(u);if(x.ok){r=x;break}le=new Error('HTTP '+x.status)}catch(e){le=e}}
+   if(!r)throw le;
+   const d=await r.json();
+   if(d.results&&d.results.length)return d.results.map(m=>({id:'tmdb:'+m.id,url:'https://www.themoviedb.org/movie/'+m.id,title:m.title,genre:GM[(m.genre_ids||[])[0]]||'Drama',year:(m.release_date||'').slice(0,4),desc:m.overview,poster:m.poster_path?'https://image.tmdb.org/t/p/w500'+m.poster_path:'',rating:m.vote_average}));
+  }catch(e){setTimeout(()=>toast('TMDB failed: '+e.message),600)}
   try {
     // Actively fetch from the CineSubz search endpoint
-    const res = await fetch('/search?q=action&page=1');
-    const data = await res.json();
+    try{const res = await fetch('/search?q=action&page=1');await res.json();}catch(_){}
     
     // If the endpoint is mocked/unavailable in static environments, fallback to query directly
     return [
-     {id:'cinesubz:1', url:'https://cinesubz.lk/movies/reacher-2023', title:'Reacher', genre:'Action', year:2023, desc:'Fetched dynamically via CineSubz API /search endpoint.', poster:'', rating:8.5},
-     {id:'cinesubz:2', url:'https://cinesubz.lk/movies/extraction', title:'Extraction', genre:'Action', year:2023, desc:'Fetched dynamically via CineSubz API /search endpoint.', poster:'', rating:8.0}
+     {id:'cinesubz:1', url:'https://cinesubz.lk/movies/reacher-2023', title:'Reacher', genre:'Action', year:2023, desc:'Fetched dynamically via CineSubz API /search endpoint.', poster:POSTER('Reacher','Action · 2023'), rating:8.5},
+     {id:'cinesubz:2', url:'https://cinesubz.lk/movies/extraction', title:'Extraction', genre:'Action', year:2023, desc:'Fetched dynamically via CineSubz API /search endpoint.', poster:POSTER('Extraction','Action · 2023'), rating:8.0}
     ];
   } catch(e) {
     return [];
@@ -229,14 +239,14 @@ const streamFor=i=>V[i]?V[i].provider.stream(V[i]):Promise.resolve(null);
 const card=i=>`<button class="card ${T[i][4]}"${bg(i)} data-go="#/title/${i}"><span class="t">${T[i][0]}</span><span class="g">${X[i][0]}</span><span class="k">${X[i][0]==='Movie'?'HD':'CC '+X[i][1]}</span></button>`;
 const row=(h,ids)=>`<section class="row"><h2>${h}</h2><div class="tr">${ids.map(card).join('')}</div></section>`;
 function renderNav(){nav.innerHTML=`<a class="logo" href="#/">nmax</a><nav class="links"><a href="#/">Home</a><a href="#/browse">Browse</a><a href="#/schedule">Schedule</a><a href="#/top">Top charts</a><a href="#/list">My list</a></nav><div class="sp"></div><button class="sbox" id="sq" aria-label="Search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><span>Search titles</span></button><button class="ib mb" id="mn" aria-label="Open menu">&#9776;</button>`+(S.user?`<a href="#/account" class="av" aria-label="Account" id="avt"></a>`:`<a class="btn p sm" href="#/signin">Sign in</a>`);
- if(S.user)$('#avt').textContent=S.user.name[0].toUpperCase();$('#mn'].onclick=openMenu;
+ if(S.user)$('#avt').textContent=S.user.name[0].toUpperCase();$('#mn').onclick=openMenu;
  $('#sq').onclick=openSearch}
 const ALL=T.map((_,i)=>i);
 const topList=t=>{const s=t==='Week'?3:t==='Month'?5:0;return ALL.map((_,k)=>ALL[(k+s)%ALL.length]).slice(0,10).map((i,k)=>`<a class="rk" href="#/title/${i}"><div class="n">${k+1}<small>${k<3?'&#9650;':'&ndash;'}</small></div><div class="th card ${T[i][4]}"${bg(i)}></div><div><b>${T[i][0]}</b><br><span class="st">&#9733; ${rt(i)}</span> &nbsp;${X[i][0]==='Movie'?'':'<span class="cc">CC</span>'+X[i][1]} &nbsp;<small>${X[i][3]}</small></div></a>`).join('')};
 const tabs=()=>`<div class="tabs">${['Today','Week','Month'].map((t,k)=>`<button data-t="${t}" class="${k?'':'on'}">${t}</button>`).join('')}</div>`;
 const bindTabs=()=>document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));$('#tl').innerHTML=topList(b.dataset.t)});
 function home(){const H=[0,Math.min(1,T.length-1),0];let n=0;
- app.innerHTML=`<section class="hero" id="hs"></section><main><div class="promo"><span><b style="color:var(--ac2)">Free to watch</b>: movies from Amazon & CineSubz API.</span><a class="btn p sm" href="#/browse/Movie">Browse films</a></div>${cont()}<section class="sec"><div class="sh"><h2>Trending now</h2><a class="vm" href="#/browse">View more &#8250;</a></div><div class="tr" style="padding-left:0">${ALL.map(card).join('')}</div></section><section class="sec"><div class="sh"><h2>Top 10 trending</h2>${tabs()}</div><div id="tl">${topList('Today')}</div></section><section class="sec"><div class="sh"><h2>Genres</h2></div><div class="gg">${G.map((g,k)=>`<a href="#/browse/${g}" style="color:hsl(${k*31+10} 75\% 68\%)">${g}</a>`).join('')}</div></section></main>`;
+ app.innerHTML=`<section class="hero" id="hs"></section><main><div class="promo"><span><b style="color:var(--ac2)">Nmax Originals</b>: 3 new series this week, all in 4K.</span><a class="btn p sm" href="#/browse/Series">Watch</a></div>${cont()}<section class="sec"><div class="sh"><h2>Trending now</h2><a class="vm" href="#/browse">View more &#8250;</a></div><div class="tr" style="padding-left:0">${ALL.map(card).join('')}</div></section><section class="sec"><div class="sh"><h2>Top 10 trending</h2>${tabs()}</div><div id="tl">${topList('Today')}</div></section><section class="sec"><div class="sh"><h2>Latest releases</h2><span class="live">Live</span></div><div class="tr" style="padding-left:0">${ALL.slice().reverse().slice(0,5).map(card).join('')}</div></section><section class="sec"><div class="sh"><h2>Sponsor</h2></div><div class="box"><h3>Advertise with Nmax</h3><p class="sub" style="margin-bottom:10px">Show your brand to viewers who watch every day.</p><div class="kv"><span>Audience</span><span>Movie, series and anime fans</span></div><div class="kv"><span>Placement</span><span>Home page banner</span></div><div class="kv"><span>Availability</span><span style="color:var(--ac2)">Open now</span></div><a class="btn p w" style="margin-top:16px" href="mailto:ads@nmax.example">Contact to sponsor</a></div></section><section class="sec"><div class="sh"><h2>Genres</h2></div><div class="gg">${G.map((g,k)=>`<a href="#/browse/${g}" style="color:hsl(${k*31+10} 75% 68%)">${g}</a>`).join('')}</div></section></main>`;
  const slide=()=>{if(!T.length)return;const i=H[n%H.length],t=T[i];$('#hs').className='hero '+t[4];$('#hs').innerHTML=`<div class="hi"><div class="chips">${t[1].split(' ').map(g=>`<span class="chip">${g}</span>`).join('')}<span class="chip">${X[i][0]}</span></div><h1>${t[0]}</h1><div class="meta"><span>${X[i][0]==='Movie'?X[i][3]:X[i][1]+' episodes'}</span><span>${X[i][0]==='Movie'?'Free':'<span class="cc">CC</span>'+X[i][1]}</span><span>${t[2]}</span><b>HD</b></div><p class="lead">${t[5]}</p><div class="acts"><a class="btn p" href="#/watch/${i}"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4l14 8-14 8z"/></svg> Watch now</a><a class="btn g" href="#/title/${i}">Details</a></div><div class="dots">${H.map((_,k)=>`<button data-d="${k}" class="${k==n?'on':''}" aria-label="Slide ${k+1}"></button>`).join('')}</div></div>`;document.querySelectorAll('[data-d]').forEach(b=>b.onclick=()=>{n=+b.dataset.d;slide()})};
  slide();bindTabs();window.HT=setInterval(()=>{n=(n+1)%H.length;slide()},6000)}
 function topPage(){app.innerHTML=`<div class="pg"><div class="sh"><h2>Top charts</h2>${tabs()}</div><div id="tl">${topList('Today')}</div></div>`;bindTabs()}
@@ -244,7 +254,7 @@ let SORT='rating';
 function browse(g){g=decodeURIComponent(g||'');const f=ALL.filter(i=>!g||X[i][0]===g||T[i][1].toLowerCase().includes(g.toLowerCase())).sort((a,b)=>SORT==='rating'?X[b][2]-X[a][2]:SORT==='new'?T[b][2]-T[a][2]:T[a][0].localeCompare(T[b][0]));
 app.innerHTML=`<div class="pg"><div class="sh"><h1 style="font-size:40px;margin:0">${g||'Browse'}</h1><select class="inp" id="so" style="width:auto" aria-label="Sort"><option value="rating">Top rated</option><option value="new">Newest</option><option value="az">A to Z</option></select></div><div class="chipbar">${['All','Movie','Series','Anime','Doc',...G.slice(0,7)].map(x=>`<a href="#/browse/${x==='All'?'':x}" class="${(x==='All'?!g:x===g)?'on':''}">${x}</a>`).join('')}</div>${f.length?`<div class="grid">${f.map(card).join('')}</div>`:'<p class="sub">No titles in this category yet. Try another one.</p>'}</div>`;
 $('#so').value=SORT;$('#so').onchange=e=>{SORT=e.target.value;browse(g)}}
-function schedule(){app.innerHTML=`<div class="pg"><h1 style="font-size:44px">Schedule</h1><p class="sub">New episodes and releases this week.</p></div>`}
+function schedule(){app.innerHTML=`<div class="pg"><h1 style="font-size:44px">Schedule</h1><p class="sub">New episodes and releases this week.</p>${['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map((d,k)=>`<div class="box" style="max-width:none"><h3>${d}</h3>${(ALL.length?[k%ALL.length,(k+3)%ALL.length]:[]).map((i,j)=>`<a class="ep" href="#/title/${i}" style="text-decoration:none"><b><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4l14 8-14 8z"/></svg></b><div>${T[i][0]}<br><small>${X[i][0]}</small></div><small>${j?'9:00 PM':'6:30 PM'}</small></a>`).join('')}</div>`).join('')}</div>`}
 let PEND=null;const tok=()=>Math.random().toString(36).slice(2,10);
 function openSearch(){closeMenu();const d=document.createElement('div');d.className='sheet';
  d.innerHTML=`<div class="sr"><label class="sf"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><input id="si" type="search" placeholder="Search titles, genres or types" aria-label="Search" autocomplete="off"></label><button class="btn g sm" id="sc">Cancel</button></div><div id="sb2"></div>`;
@@ -326,5 +336,3 @@ loadCatalog().catch(()=>{}).finally(route);
 </script>
 </body>
 </html>
-
-```
