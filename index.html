@@ -382,8 +382,17 @@ function auth(up){const note=S.next?'<div class="note">Sign in to start watching
   const n=S.next;S.next=null;toast('Welcome, '+S.user.name);location.hash=n||'#/'}}
 function title(i){const t=T[i],on=S.list.includes(+i);app.innerHTML=`<div class="pg"><div class="td">${card(i)}<div><h1 style="font-size:clamp(34px,6vw,64px)">${t[0]}</h1><div class="meta"><b>&#9733; ${rt(i)}</b><span>${X[i][0]}</span><span>${t[2]}</span><span>${t[3]}</span><span>${t[1]}</span></div><p class="lead">${t[5]}</p><div class="acts"><a class="btn l" href="#/watch/${i}"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4l14 8-14 8z"/></svg> Play</a><button class="btn g" id="ml">${on?'&#10003; In my list':'+ My list'}</button></div></div></div>${row('More like this',T.map((x,k)=>k).filter(k=>k!=i).slice(0,6))}</div>`;
  $('#ml').onclick=()=>{S.list=on?S.list.filter(x=>x!=i):[...S.list,+i];save();toast(on?'Removed from your list':'Added to your list');title(i)};addDl(i)}
-async function doDownload(i,q){const it=V[i];if(!it||!it.dl)return;try{const u=await it.dl(q||'480p');if(!u){toast('No download available');return}const a=document.createElement('a');a.href=u;a.target='_blank';a.rel='noopener';a.download='';document.body.append(a);a.click();a.remove()}catch(e){toast('Download failed: '+e.message)}}
-function addDl(i){const it=V[i];if(!it||!it.dl||!$('#ml'))return;const box=$('#ml').parentNode;const w=document.createElement('span');w.style.cssText='display:inline-flex;gap:8px;align-items:center;margin:8px 0 0 8px';
+const firebaseConfig={apiKey:"AIzaSyCTJ5ffPLkZbEoNmjQxOpvELXRI8Ti8xGE",authDomain:"my-whatsapp-2c1af.firebaseapp.com",databaseURL:"https://my-whatsapp-2c1af-default-rtdb.firebaseio.com",projectId:"my-whatsapp-2c1af",storageBucket:"my-whatsapp-2c1af.firebasestorage.app",messagingSenderId:"1089455460888",appId:"1:1089455460888:web:cd99432cc76e5399ebe96d"};
+const dlKey=i=>String(V[i]&&V[i].id||T[i][0]).toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');
+async function fbDownload(i,q){
+ const r=await fetch(firebaseConfig.databaseURL+'/downloads/'+dlKey(i)+'.json');
+ if(!r.ok)throw new Error('HTTP '+r.status);
+ const d=await r.json();
+ if(!d)return null;
+ return typeof d==='string'?d:(d[q]||d.url||null);
+}
+async function doDownload(i,q){const it=V[i];try{let u=null;if(it&&it.dl)u=await it.dl(q||'480p');if(!u){try{u=await fbDownload(i,q||'480p')}catch(_){}}if(!u){const t=T[i],x=(V[i]&&V[i].desc)||'';const txt='Title: '+String(t[0]).replace(/&amp;/g,'&')+'\nYear: '+t[2]+'\nGenre: '+t[1]+'\n\n'+x+'\n\n(No video file is available for this title.)\n';const b=new Blob([txt],{type:'text/plain'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=String(t[0]).replace(/[^a-z0-9]+/gi,'_')+'_info.txt';document.body.append(a);a.click();a.remove();toast('No video file available. Saved the title info instead.');return}const a=document.createElement('a');a.href=u;a.target='_blank';a.rel='noopener';a.download='';document.body.append(a);a.click();a.remove()}catch(e){toast('Download failed: '+e.message)}}
+function addDl(i){if(!$('#ml'))return;const box=$('#ml').parentNode;const w=document.createElement('span');w.style.cssText='display:inline-flex;gap:8px;align-items:center;margin:8px 0 0 8px';
  w.innerHTML='<select id="dq" style="background:#222;color:#fff;border:1px solid #444;border-radius:99px;padding:10px 12px"><option>360p</option><option selected>480p</option><option>720p</option><option>1080p</option></select><button id="dlb" class="btn g" style="padding:10px 16px">Download</button>';
  box.appendChild(w);$('#dlb').onclick=()=>doDownload(i,$('#dq').value)}
 function toast(m){document.querySelectorAll('.toast').forEach(e=>e.remove());const t=document.createElement('div');t.className='toast';t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),2200)}
