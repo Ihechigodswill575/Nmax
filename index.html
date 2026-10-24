@@ -179,6 +179,7 @@ const V=[],pk=i=>V[i]?V[i].id:i;
 const bg=i=>{const u=V[i]&&V[i].poster;return u?` style="background:#111 url('${String(u).replace(/['"()\\\s]/g,c=>encodeURIComponent(c))}') center/cover"`:''};
 const rt=i=>X[i]&&X[i][2]>0?Number(X[i][2]).toFixed(1):'&ndash;';
 
+const TEST_KEY='mb_db907888ed808721cb8f6e32f957e1fa8eaf0165';
 const TMDB_KEY='eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiIwN2I5ODFhMWU2ZGFkOTIwOWZjNTEzMmQ3NjcyYmNlMiIsIm5iZiI6MTc3NDAxNTE0Mi4zODMwMDAxLCJzdWIiOiI2OWJkNTJhNjEwMjI5NjkwMTE1ZmI2NTciLCJzY29wZXMiOlsiYXBpX3JlYWQiXSwidmVyc2lvbiI6MX0.coEH7RP5fn-lOrhw9iCHPpNQRT94gYMOiSg9J63YWHc';
 const POSTER=(t,g)=>'data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 600"><defs><linearGradient id="a" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4a4a4a"/><stop offset="1" stop-color="#050505"/></linearGradient></defs><rect width="400" height="600" fill="url(#a)"/><circle cx="320" cy="140" r="150" fill="#fff" fill-opacity=".08"/><path d="M165 240l110 60-110 60z" fill="#fff" fill-opacity=".85"/><text x="30" y="500" font-family="Arial" font-weight="800" font-size="46" fill="#fff">'+t+'</text><text x="30" y="540" font-family="Arial" font-size="22" fill="#bbb">'+g+'</text></svg>');
 /* CineSubz API Integration Provider with active fetch calls */
@@ -208,21 +209,74 @@ const CINESUBZ_API_PROVIDER={
   }
  },
  async stream(it){
+  if(String(it.id).startsWith('tmdb:')){
+   for(const h of ['https://api.themoviedb.org','https://api.tmdb.org']){
+    try{const r=await fetch(h+'/3/movie/'+String(it.id).slice(5)+'/videos?api_key=07b981a1e6dad9209fc5132d7672bce2');if(!r.ok)continue;const d=await r.json();const v=(d.results||[]).filter(x=>x.site==='YouTube');const t=v.find(x=>x.type==='Trailer'&&x.official)||v.find(x=>x.type==='Trailer')||v[0];if(t)return 'yt:'+t.key}catch(_){}
+   }
+  }
   try {
     // Actively query /movidl to resolve direct download/stream link from the page URL
-    const res = await fetch('/movidl?url=' + encodeURIComponent(it.url));
+    const res = await fetch('/movidl?url=' + encodeURIComponent(it.url),{headers:{'x-api-key':TEST_KEY}});
     const data = await res.json();
-    return data.directUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+    return data.directUrl || null;
   } catch(e) {
-    return 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
+    return null;
   }
  }
 };
 
+const ARCHIVE_PROVIDER={
+ async stream(it){
+  const r=await fetch('https://archive.org/metadata/'+it.aid);const d=await r.json();
+  const f=(d.files||[]).filter(x=>/\.mp4$/i.test(x.name)&&!/_sample|trailer/i.test(x.name)).sort((a,b)=>(b.size|0)-(a.size|0));
+  const m=f.find(x=>/h\.?264|mpeg4/i.test(x.format||''))||f[0];
+  return m?'https://archive.org/download/'+it.aid+'/'+encodeURIComponent(m.name):null;
+ }
+};
+async function archiveSearch(q){
+ const u='https://archive.org/advancedsearch.php?q='+encodeURIComponent('title:('+q+') AND mediatype:movies')+'&fl[]=identifier&fl[]=title&fl[]=year&fl[]=description&sort[]=downloads+desc&rows=12&output=json';
+ const r=await fetch(u);const d=await r.json();
+ return (d.response&&d.response.docs||[]).map(x=>{
+  let i=V.findIndex(v=>v.aid===x.identifier);
+  if(i<0){const it={id:'archive:'+x.identifier,aid:x.identifier,title:x.title||x.identifier,genre:'Movie',year:x.year||'',desc:String([].concat(x.description||'Public domain film from the Internet Archive.')[0]).replace(/<[^>]*>/g,' ').slice(0,300),poster:'https://archive.org/services/img/'+x.identifier,rating:0,provider:ARCHIVE_PROVIDER};
+   i=V.length;V.push(it);T.push([esc(it.title),'Movie',it.year||'Free','Free','c'+(i%6),esc(it.desc)]);X.push(['Movie',1,0,'Full movie']);}
+  return i;
+ });
+}
+const API_BASE='https://mbx.dnuz.top';
+async function sampleApi(path,params){
+ const q={...params,api_key:TEST_KEY};
+ if(!API_BASE)throw new Error('API_BASE not set');
+ const r=await fetch(API_BASE+path+'?'+new URLSearchParams(q));
+ if(!r.ok)throw new Error('HTTP '+r.status);
+ return r.json();
+}
+const SAMPLE_PROVIDER={
+ async catalog(){
+  let d=await sampleApi('/home',{});
+  let l=d.sections?d.sections.flatMap(x=>x.items||[]):(d.results||d.data||d.items||[]);
+  if(!l.length){d=await sampleApi('/movies',{page:1});l=d.results||d.data||d.items||[]}
+  const seen={};
+  return l.filter(m=>m&&(m.id||m.subjectId)&&!seen[m.id||m.subjectId]&&(seen[m.id||m.subjectId]=1)).map(m=>{
+   const id=String(m.id||m.subjectId),t=m.title||m.name||'Untitled',g=m.genre||'Movie',y=m.year||'';
+   return {id:'api:'+id,sid:id,dp:m.detail_path||m.detailPath||'',url:id,title:t,genre:g,year:y,desc:m.desc||m.description||'',poster:(typeof m.poster==='string'&&m.poster)||(typeof m.cover==='string'&&m.cover)||POSTER(t,g+(y?' · '+y:'')),rating:m.rating||7.5};
+  });
+ },
+ async stream(it){
+  const pick=d=>{const a=d.streams||d.data&&d.data.streams||[];const s=Array.isArray(a)?(a.find(x=>x.quality==='720p')||a[a.length-1]):null;return (s&&s.url)||d.url||d.data&&d.data.url||null};
+  sampleApi('/api/stream/'+it.sid+'/captions',{detail_path:it.dp}).then(c=>{it.captions=c}).catch(()=>{});
+  const sd=await sampleApi('/api/stream/'+it.sid,{detail_path:it.dp});
+  const arr=sd.streams||sd.data&&sd.data.streams;it.streams=Array.isArray(arr)?arr.filter(x=>x&&x.url):[];
+  let u=pick(sd);
+  if(!u)u=pick(await sampleApi('/api/download/'+it.sid,{detail_path:it.dp,quality:'480p'}));
+  it.dl=async q=>{const d=await sampleApi('/api/download/'+it.sid,{detail_path:it.dp,quality:q||'480p'});return d.url||d.data&&d.data.url||null};
+  return u;
+ }
+};
 const MY_PROVIDER=CINESUBZ_API_PROVIDER;
 
 async function loadCatalog(){
- const provs=[MY_PROVIDER].filter(Boolean);
+ const provs=[MY_PROVIDER,SAMPLE_PROVIDER].filter(Boolean);
  const lists=await Promise.all(provs.map(p=>p.catalog().then(l=>l.map(x=>({...x,provider:p}))).catch(()=>[])));
  const items=lists.flat();
  if(items.length<1)return;
@@ -235,10 +289,23 @@ async function loadCatalog(){
   ALL.push(i);
  });
 }
+function watchExtras(i,v){
+ const it=V[i];if(!it||!it.streams)return;
+ const host=$('#ei').parentNode;let bar=document.getElementById('xtra');if(bar)bar.remove();
+ bar=document.createElement('div');bar.id='xtra';bar.style.cssText='display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:center';
+ if(it.streams.length>1){const q=document.createElement('select');q.style.cssText='background:#222;color:#fff;border:1px solid #444;border-radius:8px;padding:8px';
+  it.streams.forEach((x,k)=>{const o=document.createElement('option');o.value=k;o.textContent=x.quality||'Auto';q.appendChild(o)});
+  q.onchange=()=>{const t=v.currentTime,p=!v.paused;v.src=it.streams[q.value].url;v.currentTime=t;if(p)v.play().catch(()=>{})};bar.appendChild(q)}
+ if(it.dl){const b=document.createElement('button');b.textContent='Download';b.style.cssText='background:#fff;color:#000;border:0;border-radius:8px;padding:8px 14px;font-weight:700';
+  b.onclick=async()=>{try{const u=await it.dl(it.streams[0]&&it.streams[0].quality||'480p');if(u)window.open(u,'_blank');else toast('No download available')}catch(e){toast('Download failed')}};bar.appendChild(b)}
+ const c=it.captions&&(it.captions.captions||it.captions.data);
+ if(c&&c[0]&&c[0].url){const t=document.createElement('track');t.kind='subtitles';t.label=c[0].label||'English';t.srclang=c[0].lang||'en';t.src=c[0].url;t.default=true;v.appendChild(t)}
+ host.appendChild(bar);
+}
 const streamFor=i=>V[i]?V[i].provider.stream(V[i]):Promise.resolve(null);
 const card=i=>`<button class="card ${T[i][4]}"${bg(i)} data-go="#/title/${i}"><span class="t">${T[i][0]}</span><span class="g">${X[i][0]}</span><span class="k">${X[i][0]==='Movie'?'HD':'CC '+X[i][1]}</span></button>`;
 const row=(h,ids)=>`<section class="row"><h2>${h}</h2><div class="tr">${ids.map(card).join('')}</div></section>`;
-function renderNav(){nav.innerHTML=`<a class="logo" href="#/">nmax</a><nav class="links"><a href="#/">Home</a><a href="#/browse">Browse</a><a href="#/schedule">Schedule</a><a href="#/top">Top charts</a><a href="#/list">My list</a></nav><div class="sp"></div><button class="sbox" id="sq" aria-label="Search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><span>Search titles</span></button><button class="ib mb" id="mn" aria-label="Open menu">&#9776;</button>`+(S.user?`<a href="#/account" class="av" aria-label="Account" id="avt"></a>`:`<a class="btn p sm" href="#/signin">Sign in</a>`);
+function renderNav(){nav.innerHTML=`<a class="logo" href="#/">nmax</a><nav class="links"><a href="#/">Home</a><a href="#/browse">Browse</a><a href="#/schedule">Schedule</a><a href="#/top">Top charts</a><a href="#/football">Football</a><a href="#/list">My list</a></nav><div class="sp"></div><button class="sbox" id="sq" aria-label="Search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg><span>Search titles</span></button><button class="ib mb" id="mn" aria-label="Open menu">&#9776;</button>`+(S.user?`<a href="#/account" class="av" aria-label="Account" id="avt"></a>`:`<a class="btn p sm" href="#/signin">Sign in</a>`);
  if(S.user)$('#avt').textContent=S.user.name[0].toUpperCase();$('#mn').onclick=openMenu;
  $('#sq').onclick=openSearch}
 const ALL=T.map((_,i)=>i);
@@ -254,6 +321,27 @@ let SORT='rating';
 function browse(g){g=decodeURIComponent(g||'');const f=ALL.filter(i=>!g||X[i][0]===g||T[i][1].toLowerCase().includes(g.toLowerCase())).sort((a,b)=>SORT==='rating'?X[b][2]-X[a][2]:SORT==='new'?T[b][2]-T[a][2]:T[a][0].localeCompare(T[b][0]));
 app.innerHTML=`<div class="pg"><div class="sh"><h1 style="font-size:40px;margin:0">${g||'Browse'}</h1><select class="inp" id="so" style="width:auto" aria-label="Sort"><option value="rating">Top rated</option><option value="new">Newest</option><option value="az">A to Z</option></select></div><div class="chipbar">${['All','Movie','Series','Anime','Doc',...G.slice(0,7)].map(x=>`<a href="#/browse/${x==='All'?'':x}" class="${(x==='All'?!g:x===g)?'on':''}">${x}</a>`).join('')}</div>${f.length?`<div class="grid">${f.map(card).join('')}</div>`:'<p class="sub">No titles in this category yet. Try another one.</p>'}</div>`;
 $('#so').value=SORT;$('#so').onchange=e=>{SORT=e.target.value;browse(g)}}
+const SPORTSCORE_KEY='PASTE_YOUR_RAPIDAPI_KEY';
+async function football(tab){tab=tab||'live';
+ app.innerHTML=`<div class="pg"><div class="sh"><h1 style="font-size:40px;margin:0">Football</h1><div class="tabs"><button data-ft="live" class="${tab==='live'?'on':''}">Live</button><button data-ft="today" class="${tab==='today'?'on':''}">Today</button></div></div><div id="fb"><p class="sub">Loading matches&hellip;</p></div></div>`;
+ document.querySelectorAll('[data-ft]').forEach(b=>b.onclick=()=>football(b.dataset.ft));
+ const out=$('#fb');
+ if(SPORTSCORE_KEY.startsWith('PASTE')){out.innerHTML='<div class="note">Add your SportScore RapidAPI key to SPORTSCORE_KEY in the code.</div>';return}
+ try{
+  const url='https://sportscore1.p.rapidapi.com/sports/1/events/'+(tab==='live'?'live':'date/'+new Date().toISOString().slice(0,10));
+  const r=await fetch(url,{headers:{'X-RapidAPI-Key':SPORTSCORE_KEY,'X-RapidAPI-Host':'sportscore1.p.rapidapi.com'}});
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  const d=await r.json();const ev=d.data||d.events||[];
+  if(!ev.length){out.innerHTML='<p class="sub">No matches right now.</p>';return}
+  const nm=x=>x&&(x.name||x.short_name)||x||'';
+  const sc=x=>{const v=x&&typeof x==='object'?(x.current!=null?x.current:x.display):x;return v==null?'':v};
+  const gp={};ev.forEach(e=>{const l=(e.league&&e.league.name)||(e.tournament&&e.tournament.name)||(e.section&&e.section.name)||'Matches';(gp[l]=gp[l]||[]).push(e)});
+  out.innerHTML=Object.keys(gp).map(l=>`<div class="box" style="max-width:none"><h3>${esc(l)}</h3>${gp[l].map(e=>{
+   const h=nm(e.home_team||e.homeTeam),a=nm(e.away_team||e.awayTeam),hs=sc(e.home_score),as=sc(e.away_score);
+   const st=e.status_more||e.time_details&&e.time_details.minute&&e.time_details.minute+"'"||e.status||'';
+   const t=e.start_at?new Date(e.start_at).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}):'';
+   return `<div class="kv"><span style="color:var(--tx)">${esc(h)} ${hs!==''?esc(hs)+' - '+esc(as):'vs'} ${esc(a)}</span><span>${esc(st&&st!=='notstarted'?st:t)}</span></div>`}).join('')}</div>`).join('');
+ }catch(e){out.innerHTML='<p class="sub">Could not load matches: '+esc(e.message)+'</p>'}}
 function schedule(){app.innerHTML=`<div class="pg"><h1 style="font-size:44px">Schedule</h1><p class="sub">New episodes and releases this week.</p>${['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'].map((d,k)=>`<div class="box" style="max-width:none"><h3>${d}</h3>${(ALL.length?[k%ALL.length,(k+3)%ALL.length]:[]).map((i,j)=>`<a class="ep" href="#/title/${i}" style="text-decoration:none"><b><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4l14 8-14 8z"/></svg></b><div>${T[i][0]}<br><small>${X[i][0]}</small></div><small>${j?'9:00 PM':'6:30 PM'}</small></a>`).join('')}</div>`).join('')}</div>`}
 let PEND=null;const tok=()=>Math.random().toString(36).slice(2,10);
 function openSearch(){closeMenu();const d=document.createElement('div');d.className='sheet';
@@ -261,7 +349,7 @@ function openSearch(){closeMenu();const d=document.createElement('div');d.classN
  document.body.append(d);const si=$('#si'),out=$('#sb2');
  const find=v=>{v=v.trim().toLowerCase();return v?ALL.filter(i=>(T[i][0]+' '+T[i][1]+' '+X[i][0]).toLowerCase().includes(v)):[]};
  const show=v=>{if(!v.trim()){out.innerHTML=`<p class="sub">Try a type or genre</p><div class="sugg">${['Movie','Series','Anime','Doc',...G.slice(0,6)].map(x=>`<a href="#/browse/${x}">${x}</a>`).join('')}</div>`;return}
-  const r=find(v);out.innerHTML=r.length?`<div class="grid">${r.map(card).join('')}</div>`:'<p class="sub">No results. Try a different word.</p>'};
+  const r=find(v);out.innerHTML=(r.length?`<div class="grid">${r.map(card).join('')}</div>`:'')+'<h3 style="font-family:var(--d);margin:22px 0 12px">Free full movies (Internet Archive)</h3><div id="arc"><p class="sub">Searching&hellip;</p></div>';clearTimeout(window.AT);window.AT=setTimeout(async()=>{try{const ids=await archiveSearch(v.trim());const a=$('#arc');if(a&&si.value===v)a.innerHTML=ids.length?`<div class="grid">${ids.map(card).join('')}</div>`:'<p class="sub">No free movies found.</p>'}catch(e){const a=$('#arc');if(a)a.innerHTML='<p class="sub">Could not reach the Internet Archive.</p>'}},400)};
  si.oninput=()=>show(si.value);si.onkeydown=e=>{if(e.key==='Enter'){const r=find(si.value);if(r.length)location.hash='#/title/'+r[0]}if(e.key==='Escape')closeMenu()};
  $('#sc').onclick=closeMenu;show('');si.focus()}
 function magicView(){const d=PEND;clearInterval(window.HT);
@@ -274,7 +362,7 @@ function magic(t){const d=PEND;
  if(!d||d.token!==t||Date.now()>d.exp){app.innerHTML=`<div class="auth"><div class="aside"><h2>This link didn’t work.</h2><p>Magic links work once and expire after 15 minutes.</p></div><div class="fw"><div class="mlw"><h1>Link expired or already used</h1><p class="sub">Go back and request a new link.</p><a class="btn p w" href="#/signin">Back to sign in</a></div></div></div>`;return}
  S.user={name:d.up?d.name:(S.user&&S.user.email===d.email?S.user.name:d.email.split('@')[0]),email:d.email,plan:d.up?d.plan:((S.user&&S.user.plan)||'Standard')};PEND=null;save();toast('Welcome, '+S.user.name);const n=S.next;S.next=null;location.replace(n||'#/')}
 function closeMenu(){document.querySelectorAll('.ov,.dr,.sheet').forEach(e=>e.remove())}
-function openMenu(){closeMenu();const L=[['Home','#/'],['Browse','#/browse'],['My list','#/list'],['Schedule','#/schedule'],['Top charts','#/top'],['Movies','#/browse/Movie'],['Series','#/browse/Series'],['Anime','#/browse/Anime'],['Documentaries','#/browse/Doc']];const o=document.createElement('div');o.className='ov';o.onclick=closeMenu;const d=document.createElement('aside');d.className='dr';d.innerHTML=`<div class="dh"><b>Menu</b><button class="ib" id="cx" aria-label="Close menu">&#10005;</button></div><input class="inp" id="mq" placeholder="Search titles" aria-label="Search titles" style="margin-bottom:12px">${L.map(l=>`<a href="${l[1]}">${l[0]}</a>`).join('')}<a class="btn p w" href="#/surprise" style="margin-top:16px">Surprise me</a><a class="btn g w" href="#/" style="margin-top:10px">Join the community</a>${S.user?'':'<a class="btn l w" href="#/signup" style="margin-top:10px">Create account</a>'}`;document.body.append(o,d);$('#cx').onclick=closeMenu;d.querySelectorAll('a').forEach(a=>a.addEventListener('click',closeMenu));$('#mq').onfocus=()=>{closeMenu();openSearch()}}
+function openMenu(){closeMenu();const L=[['Home','#/'],['Browse','#/browse'],['My list','#/list'],['Schedule','#/schedule'],['Top charts','#/top'],['Football','#/football'],['Movies','#/browse/Movie'],['Series','#/browse/Series'],['Anime','#/browse/Anime'],['Documentaries','#/browse/Doc']];const o=document.createElement('div');o.className='ov';o.onclick=closeMenu;const d=document.createElement('aside');d.className='dr';d.innerHTML=`<div class="dh"><b>Menu</b><button class="ib" id="cx" aria-label="Close menu">&#10005;</button></div><input class="inp" id="mq" placeholder="Search titles" aria-label="Search titles" style="margin-bottom:12px">${L.map(l=>`<a href="${l[1]}">${l[0]}</a>`).join('')}<a class="btn p w" href="#/surprise" style="margin-top:16px">Surprise me</a><a class="btn g w" href="#/" style="margin-top:10px">Join the community</a>${S.user?'':'<a class="btn l w" href="#/signup" style="margin-top:10px">Create account</a>'}`;document.body.append(o,d);$('#cx').onclick=closeMenu;d.querySelectorAll('a').forEach(a=>a.addEventListener('click',closeMenu));$('#mq').onfocus=()=>{closeMenu();openSearch()}}
 function fld(id,l,t,ph,extra=''){return `<div class="fld" id="f-${id}"><label for="${id}">${l}</label>${t==='password'?`<div class="pw"><input class="inp" id="${id}" type="password" placeholder="${ph}" autocomplete="${id==='pw2'?'new-password':'current-password'}"><button type="button" data-show="${id}">Show</button></div>`:`<input class="inp" id="${id}" type="${t}" placeholder="${ph}" ${extra}>`}${id==='pw'&&location.hash==='#/signup'?'<div class="str"><i id="sb"></i></div>':''}<div class="er" id="e-${id}"></div></div>`}
 function bad(id,m){const f=$('#f-'+id);f.classList.toggle('bad',!!m);$('#e-'+id).textContent=m||'';return !m}
 const okMail=v=>/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
@@ -321,12 +409,12 @@ $('#sk').onclick=e=>{const b=e.currentTarget.getBoundingClientRect();if(v.durati
 $('#sk').onkeydown=e=>{if(e.key==='ArrowRight')go(10);if(e.key==='ArrowLeft')go(-10)};
 $('#b10').onclick=()=>go(-10);$('#f10').onclick=()=>go(10);
 window.onkeydown=e=>{if(e.code==='Space'&&$('#pp')&&e.target.tagName!=='INPUT'&&e.target.tagName!=='SELECT'){e.preventDefault();tog()}};
-streamFor(i).then(u=>{if(!u)throw 0;v.src=u;$('#ei').textContent='Stream resolved successfully';}).catch(()=>{$('#ei').textContent='No video source for this title.'});
+streamFor(i).then(u=>{if(!u)throw 0;if(u.startsWith('yt:')){$('.vid').innerHTML='<iframe src="https://www.youtube.com/embed/'+u.slice(3)+'?autoplay=1&rel=0&playsinline=1" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>';$('#ei').textContent='Official trailer';return}v.src=u;$('#ei').textContent='Stream resolved successfully';setTimeout(()=>watchExtras(i,v),400);}).catch(()=>{$('#ei').textContent='No video source for this title.'});
 }
 function list(){if(!S.user){S.next='#/list';location.hash='#/signin';return}app.innerHTML=`<div class="pg"><h1 style="font-size:44px">My list</h1>${S.list.length?`<div class="tr" style="flex-wrap:wrap;padding-left:0">${S.list.map(card).join('')}</div>`:'<p class="sub">Nothing here yet. Open a title and select My list to save it.</p>'}</div>`}
 function account(){if(!S.user){location.hash='#/signin';return}const u=S.user;app.innerHTML=`<div class="pg"><h1 style="font-size:44px">Account</h1><div class="box"><h3>Profile</h3><div class="kv"><span>Name</span><span id="an"></span></div><div class="kv"><span>Email</span><span id="ae"></span></div></div><div class="box"><h3>Plan</h3><div class="kv"><span>Current plan</span><span>${u.plan}</span></div><div class="kv"><span>Saved titles</span><span>${S.list.length}</span></div></div><button class="btn g" id="so">Sign out</button></div>`;$('#an').textContent=u.name;$('#ae').textContent=u.email;$('#so').onclick=()=>{S.user=null;save();toast('Signed out');location.hash='#/'}}
 function route(){document.querySelectorAll('video').forEach(v=>{v.pause();v.removeAttribute('src');v.load()});const[,p,id]=(location.hash.slice(1)||'/').split('/');clearInterval(window.HT);closeMenu();renderNav();scrollTo(0,0);{const h=location.hash||'#/';document.querySelectorAll('.links a').forEach(a=>{const r=a.getAttribute('href');a.classList.toggle('on',r===h||(r!=='#/'&&h.startsWith(r)))})}nav.classList.toggle('solid',p!==''&&p!==undefined&&true);
- ({'':home,signin:()=>auth(0),signup:()=>auth(1),title:()=>title(+id||0),watch:()=>watch(+id||0),list,account,browse:()=>browse(id),schedule,top:topPage,magic:()=>magic(id),surprise:()=>location.replace('#/title/'+Math.floor(Math.random()*T.length))}[p||'']||home)()}
+ ({'':home,signin:()=>auth(0),signup:()=>auth(1),title:()=>title(+id||0),watch:()=>watch(+id||0),list,account,browse:()=>browse(id),schedule,football:()=>football(),top:topPage,magic:()=>magic(id),surprise:()=>location.replace('#/title/'+Math.floor(Math.random()*T.length))}[p||'']||home)()}
 document.addEventListener('click',e=>{const g=e.target.closest('[data-go]');if(g)location.hash=g.dataset.go});
 addEventListener('hashchange',route);
 addEventListener('scroll',()=>$('#up').classList.toggle('show',scrollY>600),{passive:true});$('#up').onclick=()=>scrollTo({top:0,behavior:'smooth'});
