@@ -273,6 +273,21 @@ const SAMPLE_PROVIDER={
   return u;
  }
 };
+const apiList=d=>d.sections?d.sections.flatMap(x=>x.items||[]):(d.results||d.data||d.items||d.movies||[]);
+const apiItem=m=>{const id=String(m.id||m.subjectId),t=m.title||m.name||'Untitled',g=m.genre||'Movie',y=m.year||'';return {id:'api:'+id,sid:id,dp:m.detail_path||m.detailPath||'',url:id,title:t,genre:g,year:y,desc:m.desc||m.description||'',poster:(typeof m.poster==='string'&&m.poster)||(typeof m.cover==='string'&&m.cover)||POSTER(t,g+(y?' · '+y:'')),rating:m.rating||7.5,provider:SAMPLE_PROVIDER}};
+async function apiSearch(q){
+ const d=await sampleApi('/search',{q});
+ return apiList(d).filter(m=>m&&(m.id||m.subjectId)).map(m=>{
+  const it=apiItem(m);let i=V.findIndex(v=>v.id===it.id);
+  if(i<0){i=V.length;V.push(it);T.push([esc(it.title),esc(it.genre),it.year||'Free','Free','c'+(i%6),esc(it.desc)]);X.push(['Movie',1,it.rating,'Full movie'])}
+  return i;
+ });
+}
+async function apiSuggest(q){
+ const d=await sampleApi('/search/suggest',{q});
+ const l=d.suggestions||d.results||d.data||d.items||[];
+ return l.map(x=>typeof x==='string'?x:(x&&(x.title||x.name||x.keyword))).filter(Boolean).slice(0,8);
+}
 const MY_PROVIDER=CINESUBZ_API_PROVIDER;
 
 async function loadCatalog(){
@@ -349,7 +364,7 @@ function openSearch(){closeMenu();const d=document.createElement('div');d.classN
  document.body.append(d);const si=$('#si'),out=$('#sb2');
  const find=v=>{v=v.trim().toLowerCase();return v?ALL.filter(i=>(T[i][0]+' '+T[i][1]+' '+X[i][0]).toLowerCase().includes(v)):[]};
  const show=v=>{if(!v.trim()){out.innerHTML=`<p class="sub">Try a type or genre</p><div class="sugg">${['Movie','Series','Anime','Doc',...G.slice(0,6)].map(x=>`<a href="#/browse/${x}">${x}</a>`).join('')}</div>`;return}
-  const r=find(v);out.innerHTML=(r.length?`<div class="grid">${r.map(card).join('')}</div>`:'')+'<h3 style="font-family:var(--d);margin:22px 0 12px">Free full movies (Internet Archive)</h3><div id="arc"><p class="sub">Searching&hellip;</p></div>';clearTimeout(window.AT);window.AT=setTimeout(async()=>{try{const ids=await archiveSearch(v.trim());const a=$('#arc');if(a&&si.value===v)a.innerHTML=ids.length?`<div class="grid">${ids.map(card).join('')}</div>`:'<p class="sub">No free movies found.</p>'}catch(e){const a=$('#arc');if(a)a.innerHTML='<p class="sub">Could not reach the Internet Archive.</p>'}},400)};
+  const r=find(v);out.innerHTML=(r.length?`<div class="grid">${r.map(card).join('')}</div>`:'')+'<div id="sug" style="display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 0"></div><h3 style="font-family:var(--d);margin:22px 0 12px">Results</h3><div id="api"></div><h3 style="font-family:var(--d);margin:22px 0 12px">Free full movies (Internet Archive)</h3><div id="arc"><p class="sub">Searching&hellip;</p></div>';clearTimeout(window.AT);window.AT=setTimeout(async()=>{const qq=v.trim();apiSuggest(qq).then(l=>{const e=$('#sug');if(e&&si.value===v)e.innerHTML=l.map(x=>`<button class="chip" data-sg="${esc(x)}" style="background:#222;color:#fff;border:1px solid #444;border-radius:99px;padding:6px 12px">${esc(x)}</button>`).join('');document.querySelectorAll('[data-sg]').forEach(b=>b.onclick=()=>{si.value=b.dataset.sg;si.dispatchEvent(new Event('input'))})}).catch(()=>{});apiSearch(qq).then(ids=>{const e=$('#api');if(e&&si.value===v)e.innerHTML=ids.length?`<div class="grid">${ids.map(card).join('')}</div>`:'<p class="sub">No results from the API.</p>'}).catch(()=>{const e=$('#api');if(e)e.innerHTML='<p class="sub">API search unavailable.</p>'});try{const ids=await archiveSearch(v.trim());const a=$('#arc');if(a&&si.value===v)a.innerHTML=ids.length?`<div class="grid">${ids.map(card).join('')}</div>`:'<p class="sub">No free movies found.</p>'}catch(e){const a=$('#arc');if(a)a.innerHTML='<p class="sub">Could not reach the Internet Archive.</p>'}},400)};
  si.oninput=()=>show(si.value);si.onkeydown=e=>{if(e.key==='Enter'){const r=find(si.value);if(r.length)location.hash='#/title/'+r[0]}if(e.key==='Escape')closeMenu()};
  $('#sc').onclick=closeMenu;show('');si.focus()}
 function magicView(){const d=PEND;clearInterval(window.HT);
