@@ -225,24 +225,6 @@ const CINESUBZ_API_PROVIDER={
  }
 };
 
-const ARCHIVE_PROVIDER={
- async stream(it){
-  const r=await fetch('https://archive.org/metadata/'+it.aid);const d=await r.json();
-  const f=(d.files||[]).filter(x=>/\.mp4$/i.test(x.name)&&!/_sample|trailer/i.test(x.name)).sort((a,b)=>(b.size|0)-(a.size|0));
-  const m=f.find(x=>/h\.?264|mpeg4/i.test(x.format||''))||f[0];
-  return m?'https://archive.org/download/'+it.aid+'/'+encodeURIComponent(m.name):null;
- }
-};
-async function archiveSearch(q){
- const u='https://archive.org/advancedsearch.php?q='+encodeURIComponent('title:('+q+') AND mediatype:movies')+'&fl[]=identifier&fl[]=title&fl[]=year&fl[]=description&sort[]=downloads+desc&rows=12&output=json';
- const r=await fetch(u);const d=await r.json();
- return (d.response&&d.response.docs||[]).map(x=>{
-  let i=V.findIndex(v=>v.aid===x.identifier);
-  if(i<0){const it={id:'archive:'+x.identifier,aid:x.identifier,title:x.title||x.identifier,genre:'Movie',year:x.year||'',desc:String([].concat(x.description||'Public domain film from the Internet Archive.')[0]).replace(/<[^>]*>/g,' ').slice(0,300),poster:'https://archive.org/services/img/'+x.identifier,rating:0,provider:ARCHIVE_PROVIDER};
-   i=V.length;V.push(it);T.push([esc(it.title),'Movie',it.year||'Free','Free','c'+(i%6),esc(it.desc)]);X.push(['Movie',1,0,'Full movie']);}
-  return i;
- });
-}
 const API_BASE='https://mbx.dnuz.top';
 async function sampleApi(path,params){
  const q={...params,api_key:TEST_KEY};
@@ -257,10 +239,7 @@ const SAMPLE_PROVIDER={
   let l=d.sections?d.sections.flatMap(x=>x.items||[]):(d.results||d.data||d.items||[]);
   if(!l.length){d=await sampleApi('/movies',{page:1});l=d.results||d.data||d.items||[]}
   const seen={};
-  return l.filter(m=>m&&(m.id||m.subjectId)&&!seen[m.id||m.subjectId]&&(seen[m.id||m.subjectId]=1)).map(m=>{
-   const id=String(m.id||m.subjectId),t=m.title||m.name||'Untitled',g=m.genre||'Movie',y=m.year||'';
-   return {id:'api:'+id,sid:id,dp:m.detail_path||m.detailPath||'',url:id,title:t,genre:g,year:y,desc:m.desc||m.description||'',poster:(typeof m.poster==='string'&&m.poster)||(typeof m.cover==='string'&&m.cover)||POSTER(t,g+(y?' · '+y:'')),rating:m.rating||7.5};
-  });
+  return l.filter(m=>m&&(m.id||m.subjectId)&&!seen[m.id||m.subjectId]&&(seen[m.id||m.subjectId]=1)).map(apiItem);
  },
  async stream(it){
   const pick=d=>{const a=d.streams||d.data&&d.data.streams||[];const s=Array.isArray(a)?(a.find(x=>x.quality==='720p')||a[a.length-1]):null;return (s&&s.url)||d.url||d.data&&d.data.url||null};
@@ -274,7 +253,8 @@ const SAMPLE_PROVIDER={
  }
 };
 const apiList=d=>d.sections?d.sections.flatMap(x=>x.items||[]):(d.results||d.data||d.items||d.movies||[]);
-const apiItem=m=>{const id=String(m.id||m.subjectId),t=m.title||m.name||'Untitled',g=m.genre||'Movie',y=m.year||'';return {id:'api:'+id,sid:id,dp:m.detail_path||m.detailPath||'',url:id,title:t,genre:g,year:y,desc:m.desc||m.description||'',poster:(typeof m.poster==='string'&&m.poster)||(typeof m.cover==='string'&&m.cover)||POSTER(t,g+(y?' · '+y:'')),rating:m.rating||7.5,provider:SAMPLE_PROVIDER}};
+const apiItem=m=>{const o=apiItem0(m);o.dl=async q=>{const d=await sampleApi('/api/download/'+o.sid,{detail_path:o.dp,quality:q||'480p'});return d.url||d.data&&d.data.url||null};return o};
+const apiItem0=m=>{const id=String(m.id||m.subjectId),t=m.title||m.name||'Untitled',g=m.genre||'Movie',y=m.year||'';return {id:'api:'+id,sid:id,dp:m.detail_path||m.detailPath||'',url:id,title:t,genre:g,year:y,desc:m.desc||m.description||'',poster:(typeof m.poster==='string'&&m.poster)||(typeof m.cover==='string'&&m.cover)||POSTER(t,g+(y?' · '+y:'')),rating:m.rating||7.5,provider:SAMPLE_PROVIDER}};
 async function apiSearch(q){
  const d=await sampleApi('/search',{q});
  return apiList(d).filter(m=>m&&(m.id||m.subjectId)).map(m=>{
@@ -364,7 +344,7 @@ function openSearch(){closeMenu();const d=document.createElement('div');d.classN
  document.body.append(d);const si=$('#si'),out=$('#sb2');
  const find=v=>{v=v.trim().toLowerCase();return v?ALL.filter(i=>(T[i][0]+' '+T[i][1]+' '+X[i][0]).toLowerCase().includes(v)):[]};
  const show=v=>{if(!v.trim()){out.innerHTML=`<p class="sub">Try a type or genre</p><div class="sugg">${['Movie','Series','Anime','Doc',...G.slice(0,6)].map(x=>`<a href="#/browse/${x}">${x}</a>`).join('')}</div>`;return}
-  const r=find(v);out.innerHTML=(r.length?`<div class="grid">${r.map(card).join('')}</div>`:'')+'<div id="sug" style="display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 0"></div><h3 style="font-family:var(--d);margin:22px 0 12px">Results</h3><div id="api"></div>';clearTimeout(window.AT);window.AT=setTimeout(async()=>{const qq=v.trim();apiSuggest(qq).then(l=>{const e=$('#sug');if(e&&si.value===v)e.innerHTML=l.map(x=>`<button class="chip" data-sg="${esc(x)}" style="background:#222;color:#fff;border:1px solid #444;border-radius:99px;padding:6px 12px">${esc(x)}</button>`).join('');document.querySelectorAll('[data-sg]').forEach(b=>b.onclick=()=>{si.value=b.dataset.sg;si.dispatchEvent(new Event('input'))})}).catch(()=>{});apiSearch(qq).then(ids=>{const e=$('#api');if(e&&si.value===v)e.innerHTML=ids.length?`<div class="grid">${ids.map(card).join('')}</div>`:'<p class="sub">No results from the API.</p>'}).catch(()=>{const e=$('#api');if(e)e.innerHTML='<p class="sub">API search unavailable.</p>'});try{const ids=[];const a=$('#arc');if(a&&si.value===v)a.innerHTML=ids.length?`<div class="grid">${ids.map(card).join('')}</div>`:'<p class="sub">No free movies found.</p>'}catch(e){const a=$('#arc');if(a)a.innerHTML='<p class="sub">Could not reach the Internet Archive.</p>'}},400)};
+  const r=find(v);out.innerHTML=(r.length?`<div class="grid">${r.map(card).join('')}</div>`:'')+'<div id="sug" style="display:flex;gap:8px;flex-wrap:wrap;margin:16px 0 0"></div><h3 style="font-family:var(--d);margin:22px 0 12px">Results</h3><div id="api"></div>';clearTimeout(window.AT);window.AT=setTimeout(async()=>{const qq=v.trim();apiSuggest(qq).then(l=>{const e=$('#sug');if(e&&si.value===v)e.innerHTML=l.map(x=>`<button class="chip" data-sg="${esc(x)}" style="background:#222;color:#fff;border:1px solid #444;border-radius:99px;padding:6px 12px">${esc(x)}</button>`).join('');document.querySelectorAll('[data-sg]').forEach(b=>b.onclick=()=>{si.value=b.dataset.sg;si.dispatchEvent(new Event('input'))})}).catch(()=>{});apiSearch(qq).then(ids=>{const e=$('#api');if(e&&si.value===v)e.innerHTML=ids.length?`<div class="grid">${ids.map(card).join('')}</div>`:'<p class="sub">No results from the API.</p>'}).catch(()=>{const e=$('#api');if(e)e.innerHTML='<p class="sub">API search unavailable.</p>'});try{}catch(e){}},400)};
  si.oninput=()=>show(si.value);si.onkeydown=e=>{if(e.key==='Enter'){const r=find(si.value);if(r.length)location.hash='#/title/'+r[0]}if(e.key==='Escape')closeMenu()};
  $('#sc').onclick=closeMenu;show('');si.focus()}
 function magicView(){const d=PEND;clearInterval(window.HT);
@@ -401,7 +381,11 @@ function auth(up){const note=S.next?'<div class="note">Sign in to start watching
   S.user={name:up?$('#nm').value.trim():(S.user&&S.user.email===em?S.user.name:em.split('@')[0]),email:em,plan:up?document.querySelector('[name=plan]:checked').value:(S.user&&S.user.plan)||'Standard'};save();
   const n=S.next;S.next=null;toast('Welcome, '+S.user.name);location.hash=n||'#/'}}
 function title(i){const t=T[i],on=S.list.includes(+i);app.innerHTML=`<div class="pg"><div class="td">${card(i)}<div><h1 style="font-size:clamp(34px,6vw,64px)">${t[0]}</h1><div class="meta"><b>&#9733; ${rt(i)}</b><span>${X[i][0]}</span><span>${t[2]}</span><span>${t[3]}</span><span>${t[1]}</span></div><p class="lead">${t[5]}</p><div class="acts"><a class="btn l" href="#/watch/${i}"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6 4l14 8-14 8z"/></svg> Play</a><button class="btn g" id="ml">${on?'&#10003; In my list':'+ My list'}</button></div></div></div>${row('More like this',T.map((x,k)=>k).filter(k=>k!=i).slice(0,6))}</div>`;
- $('#ml').onclick=()=>{S.list=on?S.list.filter(x=>x!=i):[...S.list,+i];save();toast(on?'Removed from your list':'Added to your list');title(i)}}
+ $('#ml').onclick=()=>{S.list=on?S.list.filter(x=>x!=i):[...S.list,+i];save();toast(on?'Removed from your list':'Added to your list');title(i)};addDl(i)}
+async function doDownload(i,q){const it=V[i];if(!it||!it.dl)return;try{const u=await it.dl(q||'480p');if(!u){toast('No download available');return}const a=document.createElement('a');a.href=u;a.target='_blank';a.rel='noopener';a.download='';document.body.append(a);a.click();a.remove()}catch(e){toast('Download failed: '+e.message)}}
+function addDl(i){const it=V[i];if(!it||!it.dl||!$('#ml'))return;const box=$('#ml').parentNode;const w=document.createElement('span');w.style.cssText='display:inline-flex;gap:8px;align-items:center;margin:8px 0 0 8px';
+ w.innerHTML='<select id="dq" style="background:#222;color:#fff;border:1px solid #444;border-radius:99px;padding:10px 12px"><option>360p</option><option selected>480p</option><option>720p</option><option>1080p</option></select><button id="dlb" class="btn g" style="padding:10px 16px">Download</button>';
+ box.appendChild(w);$('#dlb').onclick=()=>doDownload(i,$('#dq').value)}
 function toast(m){document.querySelectorAll('.toast').forEach(e=>e.remove());const t=document.createElement('div');t.className='toast';t.textContent=m;document.body.append(t);setTimeout(()=>t.remove(),2200)}
 function cont(){if(!S.user)return'';const ids=ALL.filter(i=>{const p=S.progress[pk(i)];return p&&p.t>0&&p.d});if(!ids.length)return'';return `<section class="sec"><div class="sh"><h2>Continue watching</h2></div><div class="tr" style="padding-left:0">${ids.map(i=>`<a class="card ${T[i][4]}"${bg(i)} href="#/watch/${i}"><span class="t">${T[i][0]}</span><span class="g">Resume</span><span class="bar"><i style="width:${Math.min(100,S.progress[pk(i)].t/S.progress[pk(i)].d*100)}%"></i></span></a>`).join('')}</div></section>`}
 function watch(i){if(!S.user){S.next='#/watch/'+i;location.hash='#/signin';return}
